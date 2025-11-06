@@ -100,12 +100,14 @@ const Login = () => {
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
 
+{/*
             <div className="mt-6 p-3 bg-muted/50 rounded-lg border border-border">
               <p className="text-xs text-muted-foreground text-center">
                 <strong>Demo Credentials:</strong><br />
                 Admin: FileAdmin2025 / file2025Manager
               </p>
             </div>
+*/}
           </form>
         </CardContent>
       </Card>
