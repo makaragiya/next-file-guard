@@ -53,6 +53,14 @@ const LocalFileExplorer = ({ currentPath = '/assets', onPathChange }: LocalFileE
   const [currentPathIndex, setCurrentPathIndex] = useState(0);
   const [availableFolders, setAvailableFolders] = useState<string[]>([]);
   const [selectedUploadFolder, setSelectedUploadFolder] = useState<string>(currentPath);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    loadedBytes: number;
+    totalBytes: number;
+    chunkIndex: number;
+    chunkCount: number;
+    method: 'localStorage' | 'indexedDB';
+  } | null>(null);
 
   const loadDirectory = async (path: string) => {
     setIsLoading(true);
@@ -112,6 +120,13 @@ const LocalFileExplorer = ({ currentPath = '/assets', onPathChange }: LocalFileE
       return;
     }
 
+    // Prevent uploading files larger than 4MB
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+    if (selectedFile.size > MAX_FILE_SIZE) {
+        toast.error('File is too large. Maximum size is 50MB.');
+        return;
+      }
+
     const user = getCurrentUser();
     if (!user) {
       toast.error('Not authenticated');
@@ -119,15 +134,22 @@ const LocalFileExplorer = ({ currentPath = '/assets', onPathChange }: LocalFileE
     }
 
     try {
-      await uploadFile(selectedFile, selectedUploadFolder, user.username);
+      setIsUploading(true);
+      setUploadProgress(null);
+      await uploadFile(selectedFile, selectedUploadFolder, user.username, (p) => {
+        setUploadProgress(p);
+      });
       
       toast.success('File uploaded successfully');
       setSelectedFile(null);
+      setUploadProgress(null);
+      setIsUploading(false);
       setIsUploadOpen(false);
       loadDirectory(selectedUploadFolder);
     } catch (error) {
       console.error('Upload error:', error);
       toast.error(`Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsUploading(false);
     }
   };
 
@@ -144,7 +166,12 @@ const LocalFileExplorer = ({ currentPath = '/assets', onPathChange }: LocalFileE
         return;
       }
 
-      const { blob, metadata } = await downloadFile(fileMetadata.id);
+      const user = getCurrentUser();
+      if (!user) {
+        toast.error('Not authenticated');
+        return;
+      }
+      const { blob, metadata } = await downloadFile(fileMetadata.id, user.username);
       
       // Create download link
       const url = URL.createObjectURL(blob);
@@ -351,10 +378,29 @@ const LocalFileExplorer = ({ currentPath = '/assets', onPathChange }: LocalFileE
                       onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                       required
                     />
+                    <p className="text-xs text-muted-foreground">Max size: 50MB. Allowed types: PNG, JPEG, GIF, PDF, TXT, CSV, JSON.</p>
                   </div>
-                  <Button type="submit" className="w-full" disabled={!selectedFile}>
-                    Upload File
+                  <Button type="submit" className="w-full" disabled={!selectedFile || isUploading}>
+                    {isUploading ? 'Uploading…' : 'Upload File'}
                   </Button>
+                  {uploadProgress && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>
+                          {Math.round((uploadProgress.loadedBytes / uploadProgress.totalBytes) * 100)}% • {uploadProgress.method}
+                        </span>
+                        <span>
+                          Chunk {uploadProgress.chunkIndex + 1} / {uploadProgress.chunkCount}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-muted rounded">
+                        <div
+                          className="h-2 bg-primary rounded"
+                          style={{ width: `${Math.round((uploadProgress.loadedBytes / uploadProgress.totalBytes) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </form>
               </DialogContent>
             </Dialog>
